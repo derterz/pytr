@@ -35,6 +35,8 @@ CSVCOLUMN_TO_TRANSLATION_KEY = {
     "shares": "CSVColumn_Shares",
     "fees": "CSVColumn_Fees",
     "taxes": "CSVColumn_Taxes",
+    "quote": "CSVColumn_Quote",
+    "gross": "CSVColumn_GrossAmount",
 }
 
 
@@ -47,6 +49,8 @@ class _SimpleTransaction(TypedDict):
     shares: Union[str, float, None]
     fees: Union[str, float, None]
     taxes: Union[str, float, None]
+    quote: Union[str, float, None]
+    gross: Union[str, float, None]
 
 
 @dataclass
@@ -113,6 +117,8 @@ class TransactionExporter:
         - `shares`
         - `fees`
         - `taxes`
+        - `quote`
+        - `gross`
         """
 
         if event.event_type is None:
@@ -131,6 +137,8 @@ class TransactionExporter:
             "shares": self._decimal_format(event.shares, False),
             "fees": self._decimal_format(-event.fees) if event.fees is not None else None,
             "taxes": self._decimal_format(-event.taxes) if event.taxes is not None else None,
+            "quote": self._decimal_format(event.quote, False) if event.quote is not None else None,
+            "gross": self._decimal_format(event.gross) if event.gross is not None else None,
         }
 
         # Special case for saveback events. Example payload: https://github.com/pytr-org/pytr/issues/116#issuecomment-2377491990
@@ -155,7 +163,7 @@ class TransactionExporter:
         fp: TextIO,
         events: Iterable[Event],
         sort: bool = False,
-        format: Literal["json", "csv"] = "csv",
+        format: Literal["json", "csv", "mcvs"] = "csv",
     ) -> None:
         self._log.info("Exporting transactions ...")
         if sort:
@@ -174,5 +182,33 @@ class TransactionExporter:
             for txn in transactions:
                 fp.write(json.dumps(txn))
                 fp.write("\n")
+        elif format == "mcsv":
+            lineterminator = "\n" if platform.system() == "Windows" else "\r\n"
+            writer = csv.DictWriter(
+                fp, fieldnames=self.fields(), delimiter=self.csv_delimiter, lineterminator=lineterminator
+            )
+            writer.writeheader()
+            def _expand_transactions():
+                for transaction in transactions:
+                    if transaction[self._translate("CSVColumn_Quote")] is None:
+                        transaction[self._translate("CSVColumn_Quote")] = 1  # 1€=1€
+                    if transaction[self._translate("CSVColumn_Shares")] is None:
+                        transaction[self._translate("CSVColumn_Shares")] = transaction[self._translate("CSVColumn_Value")]
+                    components = ("CSVColumn_GrossAmount", "CSVColumn_Fees", "CSVColumn_Taxes")
+                    for column_id in components:
+                        sub_transaction = transaction.copy()
+                        column_label = self._translate(column_id)
+                        if sub_transaction[column_label] is not None:
+                            sub_transaction[self._translate("CSVColumn_Value")] = sub_transaction[column_label]
+                            if column_id != "CSVColumn_GrossAmount":
+                                sub_transaction[self._translate("CSVColumn_Note")] = column_label
+                                sub_transaction[self._translate("CSVColumn_ISIN")] = None
+                                sub_transaction[self._translate("CSVColumn_Quote")] = 1
+                                sub_transaction[self._translate("CSVColumn_Shares")] = sub_transaction[self._translate("CSVColumn_Value")]
+                            for remove_labels in components:
+                                sub_transaction[self._translate(remove_labels)] = None
+                            yield sub_transaction
+
+            writer.writerows(_expand_transactions())
 
         self._log.info("Transactions exported.")

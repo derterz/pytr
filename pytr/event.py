@@ -157,6 +157,8 @@ class Event:
     shares: Optional[float]
     taxes: Optional[float]
     value: Optional[float]
+    quote: Optional[float]
+    gross: Optional[float]
 
     @classmethod
     def from_dict(cls, event_dict: Dict[Any, Any]):
@@ -175,7 +177,15 @@ class Event:
             v if (v := event_dict.get("amount", {}).get("value", None)) is not None and v != 0.0 else None
         )
         fees, isin, note, shares, taxes = cls._parse_type_dependent_params(event_type, event_dict)
-        return cls(date, title, event_type, fees, isin, note, shares, taxes, value)
+        gross = 0.
+        if value is not None:
+            gross += value
+        if fees is not None:
+            gross += fees
+        if taxes is not None:
+            gross += taxes
+        quote = None if shares is None else -gross/shares
+        return cls(date, title, event_type, fees, isin, note, shares, taxes, value, quote, gross)
 
     @staticmethod
     def _parse_type(event_dict: Dict[Any, Any]) -> Optional[EventType]:

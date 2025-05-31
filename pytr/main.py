@@ -176,7 +176,7 @@ def get_main_parser():
     parser_dl_docs.add_argument("--universal", help="Platform independent file names", action="store_true")
     parser_dl_docs.add_argument(
         "--export-format",
-        choices=("json", "csv"),
+        choices=("json", "csv", "mcsv"),
         default="csv",
         help="The output file format.",
     )
@@ -272,7 +272,7 @@ def get_main_parser():
     )
     parser_export_transactions.add_argument(
         "--format",
-        choices=("json", "csv"),
+        choices=("json", "csv", "mcsv"),
         default="csv",
         help="The output file format.",
     )
